@@ -1,0 +1,578 @@
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#FAFF69">
+<meta name="robots" content="noindex, nofollow">
+<title>Juego de memoria | ClickHouse</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+/* Tokens de marca ClickHouse
+   primary.300 #FAFF69 (color héroe) · neutral.900 #151515 · blanco #FFFFFF
+   Display: Söhne (si está instalada) con Inter como respaldo. UI y texto: Inter. */
+:root{
+  --yellow:#FAFF69;
+  --black:#151515;
+  --white:#FFFFFF;
+  --ink-60:rgba(21,21,21,.62);
+  --ink-30:rgba(21,21,21,.28);
+  --display:'Söhne','Soehne','Inter',system-ui,-apple-system,sans-serif;
+  --body:'Inter',system-ui,-apple-system,sans-serif;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+#app{
+  font-family:var(--body);
+  background:var(--yellow);
+  color:var(--black);
+  min-height:100vh;
+  padding:22px 18px 34px;
+  display:flex;justify-content:center;
+}
+.wrap{width:100%;max-width:430px}
+
+.mark{display:block;height:17px;width:auto;margin-bottom:26px}
+.mark svg{height:17px;width:auto;display:block}
+.eyebrow{font-size:11px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:var(--ink-60);margin:0 0 10px}
+h1{font-family:var(--display);font-size:34px;line-height:.98;font-weight:800;letter-spacing:-.035em;margin:0 0 12px}
+h2{font-family:var(--display);font-size:19px;font-weight:700;letter-spacing:-.02em;margin:0}
+.lead{font-size:15px;line-height:1.45;margin:0 0 22px;max-width:34ch}
+.step{font-size:11px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;margin:0 0 10px}
+.panel{background:var(--white);border-radius:4px;padding:18px;margin-bottom:14px}
+.panel p{font-size:14.5px;line-height:1.5;margin:0 0 15px}
+.note{font-size:13px;line-height:1.5;color:var(--ink-60);margin:0}
+
+/* Botón: bloque negro con el corte angular de la identidad */
+.btn{
+  position:relative;display:block;width:100%;border:0;border-radius:0;
+  padding:16px 18px;font-family:var(--display);font-size:16px;font-weight:700;letter-spacing:-.015em;
+  background:var(--black);color:var(--white);cursor:pointer;text-align:left;
+  clip-path:polygon(0 0,100% 0,calc(100% - 14px) 100%,0 100%);
+}
+.btn:disabled{background:var(--ink-30);color:rgba(255,255,255,.75);cursor:default}
+.btn.ghost{background:transparent;color:var(--black);border:1.5px solid var(--black);font-weight:600;font-size:14.5px;padding:13px 16px;clip-path:none}
+.btn+.btn{margin-top:10px}
+a.btn{text-decoration:none}
+:focus-visible{outline:2.5px solid var(--black);outline-offset:2px}
+
+.check{display:flex;gap:12px;align-items:flex-start;font-size:14.5px;line-height:1.35;cursor:pointer;margin:0 0 18px;font-weight:500}
+.check input{width:22px;height:22px;accent-color:var(--black);flex:0 0 auto;margin:0}
+
+label.field{display:block;margin-bottom:14px}
+label.field span{display:block;font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;margin-bottom:7px}
+input[type=text],input[type=email],input[type=password]{
+  width:100%;background:var(--white);border:1.5px solid var(--black);border-radius:4px;
+  padding:14px 12px;color:var(--black);font-family:var(--body);font-size:16px;font-weight:500;
+}
+input::placeholder{color:var(--ink-30)}
+.err{font-size:13px;font-weight:600;background:var(--black);color:var(--white);padding:9px 11px;border-radius:4px;margin:10px 0 0}
+
+/* Cronómetro */
+.hud{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:2px solid var(--black);padding-bottom:12px;margin-bottom:16px}
+.hud small{display:block;font-size:10.5px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:var(--ink-60);margin-bottom:1px}
+.hud .t{font-family:var(--display);font-size:30px;font-weight:800;letter-spacing:-.04em;font-variant-numeric:tabular-nums;line-height:1}
+.hud .p{font-family:var(--display);font-size:17px;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+
+/* Cartas */
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.tile{
+  position:relative;aspect-ratio:3/4;border:0;border-radius:4px;overflow:hidden;
+  background:var(--black);padding:7px;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+  font-family:var(--display);font-size:11.5px;font-weight:700;line-height:1.15;
+  color:transparent;text-align:center;letter-spacing:-.015em;
+  transition:background .14s linear,color .05s linear;
+  touch-action:manipulation;user-select:none;-webkit-user-select:none;
+}
+.tile .slash{position:absolute;inset:0;background:var(--yellow);
+  clip-path:polygon(100% 34%,100% 66%,0 100%,0 68%)}
+.tile.up,.tile.done{background:var(--white);color:var(--black)}
+.tile.up .slash,.tile.done .slash{display:none}
+.tile.done{opacity:.42}
+.tile.miss{animation:shake .34s linear}
+@keyframes shake{25%{transform:translateX(-4px)}75%{transform:translateX(4px)}}
+.tile:disabled{cursor:default}
+
+/* Resultado */
+.readout{background:var(--white);border-left:5px solid var(--black);border-radius:0 4px 4px 0;padding:14px 16px;margin:0 0 18px;font-size:14.5px;line-height:1.55;font-variant-numeric:tabular-nums}
+.readout b{font-family:var(--display);font-weight:800;letter-spacing:-.02em}
+.rank-h{display:flex;justify-content:space-between;align-items:baseline;margin:26px 0 8px}
+.rank-h span{font-size:11px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-60)}
+table{width:100%;border-collapse:collapse}
+td{border-bottom:1px solid var(--ink-30);padding:12px 0;font-size:14.5px;font-weight:500;vertical-align:middle}
+td.pos{font-family:var(--display);font-weight:800;font-size:14px;width:34px;font-variant-numeric:tabular-nums}
+td.time{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap;font-weight:600}
+tr.me td{background:var(--black);color:var(--white);font-weight:700}
+tr.me td.pos{padding-left:8px}
+tr.me td.time{padding-right:8px}
+.empty{font-size:14px;color:var(--ink-60);padding:16px 0;margin:0}
+footer{margin-top:28px;border-top:2px solid var(--black);padding-top:14px;font-size:11.5px;line-height:1.6;color:var(--ink-60);font-weight:500}
+footer b{font-weight:700;color:var(--black);cursor:pointer}
+textarea{width:100%;height:130px;background:var(--white);border:1.5px solid var(--black);border-radius:4px;color:var(--black);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;padding:10px;margin-top:10px}
+.hide{display:none!important}
+
+/* Partida en curso: el tablero ocupa la pantalla completa, sin scroll */
+#app.play{height:100dvh;padding:14px 14px 18px;overflow:hidden}
+#app.play .wrap{display:flex;flex-direction:column;height:100%;max-width:520px}
+#app.play .grid{flex:1;min-height:0;grid-template-rows:repeat(6,1fr)}
+#app.play .tile{aspect-ratio:auto;height:100%}
+
+/* Celular chico */
+@media(max-width:359px){
+  h1{font-size:29px}
+  .tile{font-size:10.5px;padding:5px}
+  .grid{gap:6px}
+}
+/* Celular en horizontal: seis columnas para no perder cartas de vista */
+@media(orientation:landscape) and (max-height:620px){
+  #app.play .wrap{max-width:900px}
+  #app.play .grid{grid-template-columns:repeat(6,1fr);grid-template-rows:repeat(3,1fr)}
+  #app.play .hud{padding-bottom:8px;margin-bottom:10px}
+  #app.play .hud .t{font-size:24px}
+}
+/* Tablet y escritorio */
+@media(min-width:640px){
+  #app{padding:40px 24px 48px}
+  .wrap{max-width:560px}
+  h1{font-size:46px}
+  .lead{font-size:16.5px}
+  .tile{font-size:13.5px}
+  #app.play{padding:28px 24px 32px}
+  #app.play .hud .t{font-size:38px}
+}
+@media(prefers-reduced-motion:reduce){.tile{transition:none}.tile.miss{animation:none}}
+</style>
+
+<div id="app"><div class="wrap" id="root"></div></div>
+
+<!-- ClickStack / HyperDX browser SDK. Si no carga (wifi del stand), el juego sigue funcionando. -->
+<script src="https://www.unpkg.com/@hyperdx/browser@0.21.0/build/index.js"></script>
+
+<script>
+/* ============================================================
+   CONFIGURACIÓN — editar solo esta sección
+   ============================================================ */
+const CONFIG = {
+  /* Query Endpoints de ClickHouse Cloud. Si ch.key queda vacía, el juego
+     funciona en modo demo: la tabla es local y no se guarda nada.
+
+     OJO: key y secret viajan en el HTML, igual que la clave de ClickStack.
+     Deben estar limitadas a ejecutar SOLO estos cinco endpoints, y conviene
+     rotarlas al cierre del evento. */
+  ch: {
+    base:   "https://queries.clickhouse.cloud/run",
+    key:    "QSDVmhTyifaaMp1KtjgJ",
+    secret: "4b1dyFtIhpMeAgEk2K46lHvTapJeTCKbeUvXjcsRvC",
+    ep: {
+      registro: "ccca637b-2f2c-4342-adc1-8925ceb5ab3a",
+      tiempo:   "1eea1dc4-b234-4f28-9ad3-98d9d20b54f9",
+      top:      "9e530d58-e077-485a-8dd1-49488f6bb2bb",
+      posicion: "ed168757-3f81-4751-97bb-40349bb3e5a3",
+      yaJugo:   "e48a9f0b-8b61-4ea4-b849-3d932db47218"
+    }
+  },
+  trialUrl: "https://clickhouse.cloud/signUp?utm_source=landing&utm_medium=event&utm_campaign=Memoria-Chile",
+  eventLabel: "Stand ClickHouse",
+  prizeCount: 10,
+
+  /* ClickStack (HyperDX). OJO: la clave de ingesta es PÚBLICA — viaja en el HTML y
+     cualquiera puede leerla desde el navegador. Usa una clave solo-ingesta y rótala
+     al cierre del evento. Si hdxKey queda vacía, el juego corre sin telemetría. */
+  hdxKey: "39685789-238b-4b9c-8189-6c2298ea11c7",
+  hdxUrl: "https://zafigkfd8a.otel.us-east-2.aws.clickhouse.cloud:4318",
+  hdxService: "memoria-clickhouse-web"
+};
+
+const WORDS = [
+  "Analytics en tiempo real",
+  "Observabilidad",
+  "Machine Learning",
+  "Agentic AI",
+  "ClickHouse Cloud",
+  "OSS",
+  "Mercado Libre",
+  "Trial",
+  "Langfuse"
+];
+
+/* Logotipo oficial, sin modificaciones */
+const LOGO = `<svg id="Layer_1" xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="0 0 649.3 198.3">
+  <!-- Generator: Adobe Illustrator 29.1.0, SVG Export Plug-In . SVG Version: 2.1.0 Build 142)  -->
+  <defs>
+    <style>
+      .st0 {
+        fill: #1e1e1e;
+      }
+    </style>
+  </defs>
+  <g>
+    <path class="st0" d="M32.2,48.8c0-.7.5-1.2,1.2-1.2h9c.7,0,1.2.5,1.2,1.2v100.7c0,.7-.5,1.2-1.2,1.2h-9c-.7,0-1.2-.5-1.2-1.2V48.8Z"/>
+    <path class="st0" d="M55.1,48.8c0-.7.5-1.2,1.2-1.2h9c.7,0,1.2.5,1.2,1.2v100.7c0,.7-.5,1.2-1.2,1.2h-9c-.7,0-1.2-.5-1.2-1.2,0,0,0-100.7,0-100.7Z"/>
+    <path class="st0" d="M78,48.8c0-.7.5-1.2,1.2-1.2h9c.7,0,1.2.5,1.2,1.2v100.7c0,.7-.5,1.2-1.2,1.2h-9c-.7,0-1.2-.5-1.2-1.2V48.8Z"/>
+    <path class="st0" d="M100.9,48.8c0-.7.5-1.2,1.2-1.2h9c.7,0,1.2.5,1.2,1.2v100.7c0,.7-.5,1.2-1.2,1.2h-9c-.7,0-1.2-.5-1.2-1.2V48.8Z"/>
+    <path class="st0" d="M123.8,88.9c0-.7.5-1.2,1.2-1.2h9c.7,0,1.2.5,1.2,1.2v20.5c0,.7-.5,1.2-1.2,1.2h-9c-.7,0-1.2-.5-1.2-1.2v-20.5Z"/>
+  </g>
+  <path class="st0" d="M195.2,75.7c-3.2,0-6.1.6-8.7,1.7-2.6,1.1-4.8,2.7-6.6,4.9-1.8,2.2-3.1,4.9-4.1,8-.9,3.1-1.4,6.6-1.4,10.5s.8,9.6,2.3,13.4c1.5,3.7,3.8,6.6,6.9,8.6,3.1,2,6.9,3,11.5,3s5.5-.2,8.1-.7,5.3-1.3,8-2.1v8.5c-2.6,1-5.2,1.7-7.9,2.1-2.7.5-5.8.7-9.3.7-6.7,0-12.2-1.4-16.7-4.1-4.4-2.7-7.7-6.7-9.9-11.7-2.2-5.1-3.3-11-3.3-17.8s.7-9.5,2-13.6c1.4-4.2,3.4-7.7,6-10.7s5.9-5.3,9.7-6.9c3.9-1.6,8.4-2.5,13.5-2.5s6.5.4,9.7,1.1,6,1.6,8.6,2.9l-3.7,8.2c-2.1-1-4.5-1.8-7-2.6-2.3-.5-4.9-.9-7.7-.9Z"/>
+  <path class="st0" d="M233.9,133.5h-9.7V63.9h9.7v69.6Z"/>
+  <path class="st0" d="M255.2,84.1v49.4h-9.7v-49.4h9.7ZM250.5,65.4c1.5,0,2.7.4,3.8,1.3s1.6,2.3,1.6,4.3-.5,3.4-1.6,4.3-2.4,1.3-3.8,1.3-2.9-.4-4-1.3c-1-.9-1.6-2.4-1.6-4.3s.5-3.5,1.6-4.3c1-.9,2.4-1.3,4-1.3Z"/>
+  <path class="st0" d="M288.5,134.4c-4.5,0-8.5-.9-11.9-2.7s-6.1-4.5-8-8.2c-1.9-3.8-2.8-8.6-2.8-14.4s1-11.1,3-14.8c2.1-3.8,4.9-6.6,8.3-8.3,3.5-1.8,7.6-2.7,12.1-2.7s5.3.3,7.7.9c2.4.5,4.5,1.2,6,1.9l-2.9,7.9c-1.7-.7-3.5-1.3-5.5-1.7-1.9-.5-3.7-.7-5.4-.7-3.1,0-5.6.7-7.6,2s-3.4,3.2-4.4,5.9c-.9,2.6-1.4,5.8-1.4,9.7s.5,6.9,1.5,9.4c1,2.6,2.4,4.5,4.3,5.9,2,1.3,4.4,1.9,7.2,1.9s5.2-.3,7.2-.9c2.1-.6,4-1.4,5.9-2.4v8.4c-1.8,1-3.7,1.8-5.8,2.3-1.9.4-4.5.6-7.5.6Z"/>
+  <path class="st0" d="M321.2,105.7c.7-.7,21.1-21.6,21.1-21.6h11.3l-19.9,21.2,21.2,28.2h-11.5l-16.3-22.1-5.7,4.8v17.3h-9.6V63.9h9.6l-.2,41.8Z"/>
+  <path class="st0" d="M415.1,133.5h-9.9v-29.9h-31.2v29.9h-9.9v-65.4h9.9v27.1h31.2v-27.1h9.9v65.4Z"/>
+  <path class="st0" d="M470.4,108.8c0,4.1-.6,7.7-1.6,10.9-1.1,3.2-2.7,5.9-4.7,8.1s-4.5,3.9-7.3,5c-2.9,1.1-6.1,1.6-9.7,1.6s-6.4-.5-9.2-1.6c-2.8-1.2-5.3-2.8-7.3-5s-3.6-4.9-4.8-8.1c-1.2-3.2-1.7-6.8-1.7-11s.9-10,2.7-13.8c1.9-3.8,4.6-6.7,8.1-8.6,3.5-2,7.7-3,12.5-3s8.5,1,11.9,3c3.5,2,6.2,4.8,8.2,8.6,1.9,3.7,2.9,8.4,2.9,13.9ZM434,108.8c0,3.7.5,6.8,1.4,9.5.9,2.6,2.4,4.6,4.3,6,2,1.4,4.5,2.1,7.5,2.1s5.6-.7,7.5-2.1c2-1.4,3.4-3.4,4.3-6,.9-2.7,1.4-5.9,1.4-9.5s-.5-7-1.5-9.5c-.9-2.6-2.4-4.5-4.3-5.9s-4.4-2.1-7.5-2.1c-4.6,0-7.9,1.5-10,4.6-2.1,3-3.1,7.3-3.1,12.9Z"/>
+  <path class="st0" d="M522.1,84.1v49.4h-7.8l-1.3-6.5h-.5c-1,1.7-2.4,3.1-4,4.2-1.6,1.1-3.5,1.9-5.4,2.4-2,.5-4,.8-6,.8-3.8,0-7.1-.6-9.8-1.8-2.6-1.3-4.6-3.2-6-5.9-1.3-2.7-2-6.1-2-10.3v-32.3h9.8v30.9c0,3.8.8,6.7,2.4,8.6s4.2,2.8,7.6,2.8,6.1-.7,8.1-2,3.3-3.3,4.1-5.9c.9-2.6,1.3-5.8,1.3-9.4v-25h9.5Z"/>
+  <path class="st0" d="M566.5,119.6c0,3.2-.8,6-2.4,8.2-1.6,2.2-3.9,3.9-6.9,5-3,1.1-6.6,1.6-10.8,1.6s-6.5-.3-9-.8c-2.4-.5-4.7-1.2-6.8-2.2v-8.5c2.2,1,4.7,2,7.6,2.8,2.9.8,5.7,1.2,8.4,1.2s6.3-.6,7.9-1.7c1.6-1.2,2.5-2.7,2.5-4.7s-.3-2.1-.9-2.9c-.6-.9-1.8-1.8-3.5-2.7-1.7-1-4.1-2.1-7.3-3.3-3.1-1.3-5.8-2.5-8-3.8s-3.9-2.8-5-4.5c-1.2-1.8-1.7-4-1.7-6.8,0-4.3,1.7-7.5,5.1-9.8,3.5-2.3,8.1-3.5,13.7-3.5s5.8.3,8.4.9c2.7.5,5.3,1.4,7.8,2.6l-3.2,7.4c-1.4-.7-2.9-1.2-4.4-1.6-1.5-.5-3-.9-4.5-1.2-1.5-.3-3-.5-4.6-.5-2.9,0-5.2.5-6.7,1.4s-2.3,2.2-2.3,3.8.3,2.2,1,3c.7.9,2,1.7,3.8,2.6s4.2,1.9,7.2,3.1c3.1,1.2,5.7,2.4,7.8,3.6,2.2,1.2,3.8,2.7,4.9,4.5,1.3,1.8,1.9,4.1,1.9,6.8Z"/>
+  <path class="st0" d="M596.2,83.2c4.3,0,8.1.9,11.2,2.7,3.1,1.8,5.5,4.3,7.1,7.7,1.7,3.4,2.6,7.3,2.6,11.9v5.3h-33.2c0,5.1,1.4,8.9,3.9,11.6,2.6,2.7,6.1,4,10.7,4s6-.3,8.4-.8c2.5-.6,5.1-1.5,7.7-2.7v8.1c-2.4,1.1-4.9,1.9-7.5,2.5-2.5.5-5.5.8-9,.8s-9-.9-12.6-2.8c-3.7-1.9-6.5-4.7-8.6-8.4-2-3.8-3-8.4-3-13.9s.9-10.3,2.7-14.1c1.9-3.8,4.5-6.8,7.8-8.8,3.4-2,7.4-3.1,11.8-3.1ZM596.2,90.7c-3.5,0-6.3,1.1-8.4,3.4-2.1,2.3-3.3,5.5-3.7,9.6h23.3c0-2.6-.4-4.8-1.2-6.8s-2-3.5-3.7-4.6c-1.6-1-3.7-1.6-6.3-1.6Z"/>
+</svg>`;
+
+/* ============================================================ */
+const root = document.getElementById("root");
+const app = document.getElementById("app");
+const DEMO = !CONFIG.ch.key || /[?&]demo\b/.test(location.search);
+const LS = "memoria-clickhouse";
+let state = { screen:"gate", player:null, ms:0, pos:null, total:0, top:[], saved:true };
+
+/* ============================================================
+   OBSERVABILIDAD — ClickStack
+   Todo pasa por track(): si el SDK no cargó o falla, el juego no se entera.
+   ============================================================ */
+const HDX = window.HyperDX;
+const sessionId = (window.crypto && crypto.randomUUID)
+  ? crypto.randomUUID()
+  : "s-" + Math.random().toString(36).slice(2) + Date.now().toString(36);
+
+if(HDX && CONFIG.hdxKey){
+  try{
+    HDX.init({
+      apiKey: CONFIG.hdxKey,
+      service: CONFIG.hdxService,
+      ...(CONFIG.hdxUrl ? { url: CONFIG.hdxUrl } : {}),
+      consoleCapture: true,
+      /* El replay es la demo: se ve el tablero, los aciertos y las dudas.
+         maskAllInputs tapa nombre, apellido y correo mientras se escriben. */
+      disableReplay: false,
+      maskAllInputs: true,
+      blockSelector: "[data-private]",
+      /* En false a propósito: no queremos cuerpos ni headers de red del stand. */
+      advancedNetworkCapture: false
+    });
+    HDX.setGlobalAttributes({ sessionId, evento:CONFIG.eventLabel, demo:String(DEMO) });
+  }catch(e){}
+}
+const track = (name, attrs) => { try{ HDX && HDX.addAction(name, {sessionId, ...attrs}); }catch(e){} };
+
+const esc = s => String(s).replace(/[<>&"]/g, c => ({"<":"&lt;",">":"&gt;","&":"&amp;",'"':"&quot;"}[c]));
+const fmt = ms => {
+  const s = Math.floor(ms/1000), d = Math.floor((ms%1000)/100);
+  return String(Math.floor(s/60)).padStart(2,"0")+":"+String(s%60).padStart(2,"0")+"."+d;
+};
+const secs = ms => (ms/1000).toFixed(3);
+const logo = () => `<span class="mark">${LOGO}</span>`;
+const initial = (n,a) => n + (a ? " " + a.trim()[0].toUpperCase() + "." : "");
+
+/* Llamada a un Query Endpoint de ClickHouse Cloud.
+   Los INSERT responden el texto "OK"; los SELECT responden JSONEachRow, que
+   es NDJSON (un objeto por línea), no un array. Siempre devolvemos un array
+   de filas para que quien llama no tenga que distinguir. */
+async function chq(name, params){
+  if(DEMO) throw new Error("demo");
+  const u = new URL(CONFIG.ch.base + "/" + CONFIG.ch.ep[name]);
+  u.searchParams.set("format", "JSONEachRow");
+  /* Un parámetro ausente devuelve 400: siempre mandamos la clave, aunque vaya vacía. */
+  Object.keys(params).forEach(k =>
+    u.searchParams.set("param_" + k, params[k] === undefined || params[k] === null ? "" : String(params[k])));
+
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), 15000);
+  try{
+    const r = await fetch(u.toString(), {
+      method: "GET",
+      headers: { Authorization: "Basic " + btoa(CONFIG.ch.key + ":" + CONFIG.ch.secret) },
+      signal: ctrl.signal
+    });
+    const txt = (await r.text()).trim();
+    if(!r.ok) throw new Error("http " + r.status + " " + txt.slice(0, 140));
+    if(!txt || txt === "OK") return [];
+    return txt.split("\n").filter(Boolean).map(l => JSON.parse(l));
+  } finally {
+    clearTimeout(t);
+  }
+}
+
+/* Modo demo: tabla guardada solo en este teléfono */
+function demoRows(){ try{ return JSON.parse(localStorage.getItem(LS+"-demo") || "[]"); }catch(e){ return []; } }
+function demoSave(name, ms){
+  const r = demoRows(); r.push({name, ms}); r.sort((a,b) => a.ms-b.ms);
+  localStorage.setItem(LS+"-demo", JSON.stringify(r));
+  return r;
+}
+
+/* ---------- pantallas ---------- */
+function screenGate(){
+  app.classList.remove("play");
+  root.innerHTML = `
+    ${logo()}
+    <p class="eyebrow">${esc(CONFIG.eventLabel)}</p>
+    <h1>Juego de memoria</h1>
+    <p class="lead">Nueve pares. Un intento. Gana el tiempo más bajo del día.</p>
+    <div class="panel">
+      <p class="step">Paso 1 — Cuenta de prueba</p>
+      <p>Para jugar necesitas una cuenta de prueba de ClickHouse Cloud. Créala y vuelve a esta pantalla.</p>
+      <a class="btn" id="trial" href="${CONFIG.trialUrl}" target="_blank" rel="noopener">Crear mi cuenta de prueba</a>
+    </div>
+    <label class="check"><input type="checkbox" id="ok"><span>Ya creé mi cuenta de prueba</span></label>
+    <button class="btn" id="next" disabled>Continuar</button>
+    ${footer()}`;
+  const ok = document.getElementById("ok"), next = document.getElementById("next");
+  track("gate_vista");
+  document.getElementById("trial").onclick = () => track("trial_cta_click");
+  ok.onchange = () => { next.disabled = !ok.checked; if(ok.checked) track("trial_confirmado"); };
+  next.onclick = () => { track("gate_completado"); state.screen="form"; render(); };
+}
+
+function screenForm(){
+  app.classList.remove("play");
+  root.innerHTML = `
+    ${logo()}
+    <p class="eyebrow">${esc(CONFIG.eventLabel)}</p>
+    <h1>Regístrate para jugar</h1>
+    <p class="step">Paso 2 — Tus datos</p>
+    <label class="field"><span>Nombre</span><input type="text" id="n" autocomplete="given-name" placeholder="Camila"></label>
+    <label class="field"><span>Apellido</span><input type="text" id="a" autocomplete="family-name" placeholder="Rojas"></label>
+    <label class="field"><span>Correo de tu cuenta de prueba</span><input type="email" id="e" autocomplete="email" inputmode="email" placeholder="camila@empresa.cl"></label>
+    <p class="note">Tienes un solo intento. El cronómetro parte cuando das vuelta la primera carta.</p>
+    <p class="err hide" id="err"></p>
+    <button class="btn" id="go" style="margin-top:18px">Comenzar a jugar</button>
+    ${footer()}`;
+  const err = document.getElementById("err");
+  const show = m => { err.textContent = m; err.classList.remove("hide"); };
+  track("form_visto");
+  document.getElementById("go").onclick = async (ev) => {
+    const n = document.getElementById("n").value.trim();
+    const a = document.getElementById("a").value.trim();
+    const e = document.getElementById("e").value.trim();
+    err.classList.add("hide");
+    if(n.length < 2){ track("form_invalido", {campo:"nombre"}); return show("Escribe tu nombre."); }
+    if(a.length < 2){ track("form_invalido", {campo:"apellido"}); return show("Escribe tu apellido."); }
+    if(!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(e)){ track("form_invalido", {campo:"correo"}); return show("Revisa tu correo."); }
+    state.player = { n, a, e };
+    /* Envío deliberado, no capturado del teclado: liga la sesión a la persona
+       registrada. Borra estas dos líneas si prefieres telemetría anónima. */
+    try{ HDX && HDX.setGlobalAttributes({ userEmail:e, userName:n+" "+a }); }catch(e2){}
+    if(DEMO){ track("registro_ok", {modo:"demo"}); state.screen = "game"; return render(); }
+    ev.target.disabled = true; ev.target.textContent = "Verificando";
+
+    /* Solo bloqueamos con un "ya jugó" confirmado por el servidor. Si la
+       consulta falla por red, dejamos jugar: en un stand es peor dejar a
+       alguien fuera por el wifi que permitir un intento repetido. */
+    try{
+      const d = await chq("yaJugo", { evento:CONFIG.eventLabel, correo:e });
+      if(d[0] && Number(d[0].dup) === 1){
+        ev.target.disabled = false; ev.target.textContent = "Comenzar a jugar";
+        track("registro_rechazado", {motivo:"dup"});
+        return show("Este correo ya participó. Cada persona juega una sola vez.");
+      }
+    }catch(err2){
+      track("yajugo_error_red", {motivo:String(err2 && err2.message || err2)});
+    }
+
+    /* Tampoco bloqueamos si falla el registro: el endpoint "tiempo" reinserta
+       la fila completa al terminar, así que se recupera solo. Únicamente se
+       pierde el dato si además abandona la partida. */
+    try{
+      await chq("registro", { evento:CONFIG.eventLabel, correo:e, nombre:n, apellido:a, session_id:sessionId });
+      track("registro_ok", {modo:"servidor"});
+    }catch(err2){
+      track("registro_error_red", {motivo:String(err2 && err2.message || err2)});
+    }
+    state.screen = "game"; render();
+  };
+}
+
+function screenGame(){
+  app.classList.add("play");
+  const deck = WORDS.concat(WORDS).map(w => ({w, id:Math.random()})).sort((x,y) => x.id-y.id);
+  root.innerHTML = `
+    <div class="hud">
+      <div><small>Elapsed</small><div class="t" id="clock">00:00.0</div></div>
+      <div class="p"><small>Pares</small><span id="pairs">0</span>/9</div>
+    </div>
+    <div class="grid" id="grid">${deck.map((c,i) =>
+      `<button class="tile" data-i="${i}" data-w="${esc(c.w)}" aria-label="Carta ${i+1}"><span class="slash"></span>${esc(c.w)}</button>`
+    ).join("")}</div>`;
+
+  let t0 = 0, timer = null, open = [], found = 0, lock = false, flips = 0, fallos = 0;
+  const clock = document.getElementById("clock");
+  const tick = () => clock.textContent = fmt(Date.now() - t0);
+  track("tablero_visto");
+
+  document.getElementById("grid").onclick = (ev) => {
+    const el = ev.target.closest(".tile");
+    if(!el || lock || el.classList.contains("up") || el.classList.contains("done")) return;
+    if(!t0){ t0 = Date.now(); timer = setInterval(tick, 100); track("partida_iniciada"); }
+    el.classList.add("up"); open.push(el); flips++;
+    if(open.length < 2) return;
+    const [x,y] = open;
+    if(x.dataset.w === y.dataset.w){
+      x.classList.replace("up","done"); y.classList.replace("up","done");
+      open = []; found++;
+      document.getElementById("pairs").textContent = found;
+      track("par_encontrado", { concepto:x.dataset.w, pares:found, flips, elapsed_ms:Date.now()-t0 });
+      if(found === WORDS.length){
+        clearInterval(timer);
+        state.ms = Date.now() - t0;
+        state.flips = flips; state.fallos = fallos;
+        track("partida_completada", { elapsed_ms:state.ms, flips, fallos,
+          precision:+(WORDS.length / (WORDS.length + fallos)).toFixed(3) });
+        setTimeout(finish, 420);
+      }
+    } else {
+      lock = true; fallos++;
+      track("par_fallado", { fallos, flips, elapsed_ms:Date.now()-t0 });
+      x.classList.add("miss"); y.classList.add("miss");
+      setTimeout(() => {
+        [x,y].forEach(c => c.classList.remove("up","miss"));
+        open = []; lock = false;
+      }, 700);
+    }
+  };
+}
+
+async function finish(){
+  const p = state.player;
+  /* Guardamos el correo: es la identidad del jugador contra ClickHouse, y sin
+     él quien vuelve a abrir la página no puede recuperar su posición. */
+  try{ localStorage.setItem(LS, JSON.stringify({n:p.n, a:p.a, e:p.e, ms:state.ms})); }catch(e){}
+  if(DEMO){
+    const rows = demoSave(initial(p.n,p.a), state.ms);
+    state.top = rows.slice(0, CONFIG.prizeCount);
+    state.total = rows.length;
+    state.pos = rows.findIndex(r => r.ms === state.ms) + 1;
+    state.saved = true;
+    state.screen = "result"; return render();
+  }
+  app.classList.remove("play");
+  root.innerHTML = `${logo()}<p class="eyebrow">Guardando tu tiempo</p><h1>${secs(state.ms)} sec</h1>`;
+  state.saved = await sendScore();
+  state.screen = "result"; render();
+}
+
+async function sendScore(){
+  const p = state.player;
+  for(let i = 0; i < 2; i++){
+    try{
+      /* Reinserta la fila completa: con ReplacingMergeTree la última versión
+         reemplaza a la anterior, así que omitir nombre o apellido los borraría. */
+      await chq("tiempo", { evento:CONFIG.eventLabel, correo:p.e, nombre:p.n, apellido:p.a,
+                            session_id:sessionId, elapsed_ms:state.ms,
+                            flips:state.flips || 0, fallos:state.fallos || 0 });
+      await refreshTop();
+      track("tiempo_guardado", { intento:i+1, elapsed_ms:state.ms, posicion:state.pos, total:state.total });
+      return true;
+    }catch(e){ track("tiempo_error_red", { intento:i+1, motivo:String(e && e.message || e) }); }
+  }
+  track("tiempo_perdido", { elapsed_ms:state.ms });
+  return false;
+}
+
+/* Refresca tabla y posición. Van por separado a propósito: si falla una,
+   la otra igual se actualiza. */
+async function refreshTop(){
+  if(DEMO){ const r = demoRows(); state.top = r.slice(0, CONFIG.prizeCount); state.total = r.length; return; }
+  try{
+    const rows = await chq("top", { evento:CONFIG.eventLabel, limite:CONFIG.prizeCount });
+    state.top = rows.map(r => ({ name:r.name, ms:Number(r.ms) }));
+    track("tabla_actualizada", { filas:state.top.length });
+  }catch(e){ track("tabla_error_red", {motivo:String(e && e.message || e)}); }
+
+  const correo = state.player && state.player.e;
+  if(!correo) return;
+  try{
+    const r = await chq("posicion", { evento:CONFIG.eventLabel, correo:correo });
+    if(r[0]){
+      state.pos   = Number(r[0].pos)   || null;   // 0 = aún sin tiempo registrado
+      state.total = Number(r[0].total) || 0;
+    }
+  }catch(e){ track("posicion_error_red", {motivo:String(e && e.message || e)}); }
+}
+
+function screenResult(replay){
+  app.classList.remove("play");
+  const inPrize = state.pos && state.pos <= CONFIG.prizeCount;
+  const mine = initial(state.player.n, state.player.a);
+  root.innerHTML = `
+    ${logo()}
+    <p class="eyebrow">${replay ? "Ya participaste" : "Partida terminada"}</p>
+    <h1>${replay ? "Tu resultado" : "Listo, " + esc(state.player.n)}</h1>
+    <p class="readout">Nueve pares encontrados.<br>Elapsed: <b>${secs(state.ms)} sec</b>${
+      state.pos ? `<br>Posición: <b>${state.pos}°</b> de ${state.total}` : ""}</p>
+    ${state.saved ? `<p class="lead" style="margin-bottom:0">${
+        inPrize ? `Estás entre los ${CONFIG.prizeCount} mejores tiempos. Pasa por el stand al cierre del día para retirar tu premio.`
+                : `Los ${CONFIG.prizeCount} mejores tiempos del día se llevan un premio. Sigue la tabla en el stand.`}</p>`
+      : `<p class="err">Tu tiempo no llegó al servidor. Toca "Enviar mi tiempo" o muestra esta pantalla al equipo del stand.</p>
+         <button class="btn" id="rs" style="margin-top:12px">Enviar mi tiempo</button>`}
+    ${rankTable(mine)}
+    <button class="btn ghost" id="rf" style="margin-top:18px">Actualizar tabla</button>
+    ${DEMO ? `<p class="note" style="margin-top:14px">Modo demo: la tabla es local y no se guarda en el servidor.</p>` : ""}
+    ${footer()}`;
+  document.getElementById("rf").onclick = async (ev) => {
+    ev.target.textContent = "Actualizando";
+    await refreshTop(); render();
+  };
+  const rs = document.getElementById("rs");
+  if(rs) rs.onclick = async (ev) => {
+    ev.target.disabled = true; ev.target.textContent = "Enviando";
+    state.saved = await sendScore(); render();
+  };
+}
+
+function rankTable(mine){
+  const top = (state.top || []).slice(0, CONFIG.prizeCount);
+  let marked = false;
+  return `
+    <div class="rank-h"><h2>Tabla de posiciones</h2><span>Top ${CONFIG.prizeCount}</span></div>
+    ${top.length ? `<table>${top.map((r,i) => {
+      /* Con servidor usamos la posición que devuelve ClickHouse: es exacta y no
+         se confunde entre dos "Camila R.". El calce por nombre queda de respaldo
+         para el modo demo o si la consulta de posición falló. */
+      const me = !marked && (state.pos
+        ? (i + 1) === state.pos
+        : (r.name === mine && Math.abs(r.ms - state.ms) < 2));
+      if(me) marked = true;
+      return `<tr class="${me ? "me" : ""}">
+        <td class="pos">${i+1}</td>
+        <td>${esc(r.name)}${me ? " · tú" : ""}</td>
+        <td class="time">${secs(r.ms)} s</td>
+      </tr>`; }).join("")}</table>`
+      : `<p class="empty">Todavía no hay partidas registradas. Sé el primero.</p>`}`;
+}
+
+function footer(){
+  return `<footer>ClickHouse · La tabla se actualiza con cada partida.<br>Premios para los ${CONFIG.prizeCount} mejores tiempos, entregados al cierre del día.</footer>`;
+}
+
+function render(){
+  if(state.screen === "gate") return screenGate();
+  if(state.screen === "form") return screenForm();
+  if(state.screen === "game") return screenGame();
+  if(state.screen === "result") return screenResult(state.replay === true);
+}
+
+/* Arranque: si este teléfono ya jugó, muestra su resultado.
+   Pruebas: ?reset=1 borra el registro local · ?demo=1 fuerza el modo sin servidor */
+(async () => {
+  if(/[?&]reset\b/.test(location.search)){
+    try{ localStorage.removeItem(LS); localStorage.removeItem(LS+"-demo"); }catch(e){}
+    history.replaceState(null, "", location.pathname);
+  }
+  let prev = null;
+  try{ prev = JSON.parse(localStorage.getItem(LS) || "null"); }catch(e){}
+  if(prev && prev.ms){
+    state.player = { n:prev.n, a:prev.a, e:prev.e || "" };
+    state.ms = prev.ms; state.replay = true; state.screen = "result";
+    track("jugador_recurrente", { elapsed_ms:prev.ms });
+    root.innerHTML = `${logo()}<p class="eyebrow">Cargando tabla</p>`;
+    await refreshTop();
+    return render();
+  }
+  track("sesion_nueva");
+  render();
+})();
+
+</script>

@@ -1,0 +1,18 @@
+# Secretos y configuración local
+.env
+.env.*
+!.env.example
+
+# Credenciales de ClickHouse Cloud (key id + secret). NO commitear.
+*api-key*
+*api_key*
+*.secret
+credentials*
+
+# Dependencias / build (para cuando llegue el backend)
+node_modules/
+dist/
+
+# Sistema
+.DS_Store
+Thumbs.db
