@@ -503,7 +503,7 @@ function screenResult(replay){
     <p class="readout">Nueve pares encontrados.<br>Elapsed: <b>${secs(state.ms)} sec</b>${
       state.pos ? `<br>Posición: <b>${state.pos}°</b> de ${state.total}` : ""}</p>
     ${state.saved ? `<p class="lead" style="margin-bottom:0">${
-        inPrize ? `Estás entre los ${CONFIG.prizeCount} mejores tiempos. Pasa por el stand al cierre del día para retirar tu premio.`
+        inPrize ? `Estás entre los ${CONFIG.prizeCount} mejores tiempos. Pasa por el stand a las 14:00 del día 09 para retirar tu premio.`
                 : `Los ${CONFIG.prizeCount} mejores tiempos del día se llevan un premio. Sigue la tabla en el stand.`}</p>`
       : `<p class="err">Tu tiempo no llegó al servidor. Toca "Enviar mi tiempo" o muestra esta pantalla al equipo del stand.</p>
          <button class="btn" id="rs" style="margin-top:12px">Enviar mi tiempo</button>`}
@@ -544,7 +544,7 @@ function rankTable(mine){
 }
 
 function footer(){
-  return `<footer>ClickHouse · La tabla se actualiza con cada partida.<br>Premios para los ${CONFIG.prizeCount} mejores tiempos, entregados al cierre del día.</footer>`;
+  return `<footer>ClickHouse · La tabla se actualiza con cada partida.<br>Premios para los ${CONFIG.prizeCount} mejores tiempos, entregados a las 14:00 del día 09.</footer>`;
 }
 
 function render(){
