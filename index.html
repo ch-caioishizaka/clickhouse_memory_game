@@ -278,7 +278,7 @@ const root = document.getElementById("root");
 const app = document.getElementById("app");
 const DEMO = !CONFIG.ch.key || /[?&]demo\b/.test(location.search);
 const LS = "memoria-clickhouse";
-let state = { screen:"gate", player:null, ms:0, pos:null, total:0, top:[], saved:true };
+let state = { screen:"form", player:null, ms:0, pos:null, total:0, top:[], saved:true };
 
 /* ============================================================
    OBSERVABILIDAD — ClickStack
@@ -356,35 +356,14 @@ function demoSave(name, ms){
 }
 
 /* ---------- pantallas ---------- */
-function screenGate(){
+function screenForm(){
   app.classList.remove("play");
   root.innerHTML = `
     ${logo()}
     <p class="eyebrow">${esc(CONFIG.eventLabel)}</p>
     <h1>Juego de memoria</h1>
     <p class="lead">Nueve pares. Un intento. Gana el tiempo más bajo del día.</p>
-    <div class="panel">
-      <p class="step">Paso 1 — Cuenta de prueba</p>
-      <p>Para jugar necesitas una cuenta de prueba de ClickHouse Cloud. Créala y vuelve a esta pantalla.</p>
-      <a class="btn" id="trial" href="${CONFIG.trialUrl}" target="_blank" rel="noopener">Crear mi cuenta de prueba</a>
-    </div>
-    <label class="check"><input type="checkbox" id="ok"><span>Ya creé mi cuenta de prueba</span></label>
-    <button class="btn" id="next" disabled>Continuar</button>
-    ${footer()}`;
-  const ok = document.getElementById("ok"), next = document.getElementById("next");
-  track("gate_vista");
-  document.getElementById("trial").onclick = () => track("trial_cta_click");
-  ok.onchange = () => { next.disabled = !ok.checked; if(ok.checked) track("trial_confirmado"); };
-  next.onclick = () => { track("gate_completado"); state.screen="form"; render(); };
-}
-
-function screenForm(){
-  app.classList.remove("play");
-  root.innerHTML = `
-    ${logo()}
-    <p class="eyebrow">${esc(CONFIG.eventLabel)}</p>
-    <h1>Regístrate para jugar</h1>
-    <p class="step">Paso 2 — Tus datos</p>
+    <p class="step">Tus datos</p>
     <label class="field"><span>Nombre</span><input type="text" id="n" autocomplete="given-name" placeholder="Camila"></label>
     <label class="field"><span>Apellido</span><input type="text" id="a" autocomplete="family-name" placeholder="Rojas"></label>
     <label class="field"><span>Correo electrónico corporativo</span><input type="email" id="e" autocomplete="email" inputmode="email" placeholder="camila@empresa.cl"></label>
@@ -628,7 +607,6 @@ function footer(){
 }
 
 function render(){
-  if(state.screen === "gate") return screenGate();
   if(state.screen === "form") return screenForm();
   if(state.screen === "game") return screenGame();
   if(state.screen === "result") return screenResult(state.replay === true);
