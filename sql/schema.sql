@@ -24,6 +24,14 @@ CREATE TABLE IF NOT EXISTS evento.partidas
     correo      String,                              -- normalizado: lower+trim
     nombre      String DEFAULT '',
     apellido    String DEFAULT '',
+    telefono    String DEFAULT '',
+    empresa     String DEFAULT '',                   -- razón social, texto libre
+    -- Industria y dotación: conjuntos cerrados y cortos -> LowCardinality.
+    -- Se guarda el valor canónico EN INGLÉS ("Food & Beverage"), que es el que
+    -- espera Salesforce; el formulario muestra la etiqueta en español y manda
+    -- el inglés. Así el dato ya sale listo, sin conversión posterior.
+    industria   LowCardinality(String) DEFAULT '',
+    empleados   LowCardinality(String) DEFAULT '',   -- "51-100", "10000+"
     session_id  String DEFAULT '',                   -- liga con la sesión de ClickStack
     elapsed_ms  UInt32 DEFAULT 0,                    -- 0 = registrado, no terminó
     flips       UInt16 DEFAULT 0,
@@ -34,6 +42,15 @@ CREATE TABLE IF NOT EXISTS evento.partidas
 ENGINE = ReplacingMergeTree(updated_at)
 ORDER BY (evento, correo);
 
+-- Si la tabla YA existe con datos, no la recrees: añade las columnas nuevas.
+-- En ClickHouse esto es solo metadatos, no reescribe las partes existentes,
+-- y las filas viejas quedan con '' (el DEFAULT).
+ALTER TABLE evento.partidas
+    ADD COLUMN IF NOT EXISTS telefono  String                 DEFAULT '' AFTER apellido,
+    ADD COLUMN IF NOT EXISTS empresa   String                 DEFAULT '' AFTER telefono,
+    ADD COLUMN IF NOT EXISTS industria LowCardinality(String) DEFAULT '' AFTER empresa,
+    ADD COLUMN IF NOT EXISTS empleados LowCardinality(String) DEFAULT '' AFTER industria;
+
 -- Inserciones de una fila desde el navegador: sin esto se crean demasiadas
 -- parts pequeñas. wait_for_async_insert=1 para que el endpoint solo responda
 -- OK cuando el dato quedó realmente escrito.
@@ -42,36 +59,57 @@ ALTER USER juego_evento SETTINGS
     async_insert = 1,
     wait_for_async_insert = 1;
 
+-- Los permisos son POR COLUMNA: al añadir columnas hay que volver a otorgarlos,
+-- si no los endpoints 1 y 2 responden 403 "Not enough privileges".
+GRANT INSERT(evento, correo, nombre, apellido, telefono, empresa, industria,
+             empleados, session_id, elapsed_ms, flips, fallos, updated_at)
+    ON evento.partidas TO juego_evento;
+GRANT SELECT(evento, correo, nombre, apellido, elapsed_ms)
+    ON evento.partidas TO juego_evento;
+
 
 -- ============================================================
 -- ENDPOINT 1 — registro  (al enviar el formulario)
--- Variables: evento, correo, nombre, apellido, session_id
+-- Variables: evento, correo, nombre, apellido, telefono, empresa,
+--            industria, empleados, session_id
 -- ============================================================
 INSERT INTO evento.partidas
-    (evento, correo, nombre, apellido, session_id, updated_at)
+    (evento, correo, nombre, apellido, telefono, empresa,
+     industria, empleados, session_id, updated_at)
 SELECT
     {evento:String},
     lower(trim({correo:String})),
     trim({nombre:String}),
     trim({apellido:String}),
+    trim({telefono:String}),
+    trim({empresa:String}),
+    trim({industria:String}),
+    trim({empleados:String}),
     {session_id:String},
     now64(3);
 
 
 -- ============================================================
 -- ENDPOINT 2 — tiempo  (al terminar la partida)
--- Variables: evento, correo, nombre, apellido, session_id, elapsed_ms, flips, fallos
+-- Variables: evento, correo, nombre, apellido, telefono, empresa, industria,
+--            empleados, session_id, elapsed_ms, flips, fallos
 --
 -- Reinserta la fila COMPLETA: con ReplacingMergeTree la última versión
--- reemplaza a la anterior, así que omitir nombre/apellido los borraría.
+-- reemplaza a la anterior, así que omitir cualquier columna la borraría.
+-- Si añades campos al formulario, tienen que aparecer TAMBIÉN aquí.
 -- ============================================================
 INSERT INTO evento.partidas
-    (evento, correo, nombre, apellido, session_id, elapsed_ms, flips, fallos, updated_at)
+    (evento, correo, nombre, apellido, telefono, empresa, industria, empleados,
+     session_id, elapsed_ms, flips, fallos, updated_at)
 SELECT
     {evento:String},
     lower(trim({correo:String})),
     trim({nombre:String}),
     trim({apellido:String}),
+    trim({telefono:String}),
+    trim({empresa:String}),
+    trim({industria:String}),
+    trim({empleados:String}),
     {session_id:String},
     {elapsed_ms:UInt32},
     {flips:UInt16},
@@ -140,8 +178,28 @@ SELECT
 FROM evento.partidas FINAL
 WHERE evento = {evento:String};
 
--- Lista de leads para pasar a marketing.
-SELECT nombre, apellido, correo, elapsed_ms, registrado
+-- Lista de leads para pasar a marketing / Salesforce.
+-- industria ya viene en inglés canónico; empleados, tal cual se eligió.
+SELECT nombre, apellido, correo, telefono, empresa, industria, empleados,
+       elapsed_ms, registrado
 FROM evento.partidas FINAL
 WHERE evento = {evento:String}
 ORDER BY registrado ASC;
+
+-- Leads por industria.
+SELECT industria, count() AS leads
+FROM evento.partidas FINAL
+WHERE evento = {evento:String} AND industria != ''
+GROUP BY industria
+ORDER BY leads DESC;
+
+-- Leads por tamaño de empresa.
+-- Ordenamos por la posición en el array, no alfabéticamente: como texto
+-- "101-250" iría antes que "11-25" y el informe saldría desordenado.
+SELECT empleados, count() AS leads
+FROM evento.partidas FINAL
+WHERE evento = {evento:String} AND empleados != ''
+GROUP BY empleados
+ORDER BY indexOf(['0-10','11-25','26-50','51-100','101-250','251-500',
+                  '501-1000','1001-2500','2501-5000','5001-10000','10000+'],
+                 empleados);

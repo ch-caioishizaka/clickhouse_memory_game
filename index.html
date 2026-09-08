@@ -57,11 +57,19 @@ a.btn{text-decoration:none}
 
 label.field{display:block;margin-bottom:14px}
 label.field span{display:block;font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;margin-bottom:7px}
-input[type=text],input[type=email],input[type=password]{
+input[type=text],input[type=email],input[type=password],input[type=tel],select{
   width:100%;background:var(--white);border:1.5px solid var(--black);border-radius:4px;
   padding:14px 12px;color:var(--black);font-family:var(--body);font-size:16px;font-weight:500;
 }
 input::placeholder{color:var(--ink-30)}
+/* font-size:16px en todos los campos: por debajo de eso iOS hace zoom al enfocar
+   y descuadra el formulario. */
+select{
+  appearance:none;-webkit-appearance:none;cursor:pointer;padding-right:38px;
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'><path d='M1 1l5 5 5-5' stroke='%23151515' stroke-width='2' fill='none'/></svg>");
+  background-repeat:no-repeat;background-position:right 13px center;background-size:12px;
+}
+select:invalid{color:var(--ink-30)}   /* el placeholder se ve gris hasta elegir */
 .err{font-size:13px;font-weight:600;background:var(--black);color:var(--white);padding:9px 11px;border-radius:4px;margin:10px 0 0}
 
 /* Cronómetro */
@@ -191,6 +199,50 @@ const WORDS = [
   "Trial",
   "Langfuse"
 ];
+
+/* Industrias. Primer valor = canónico en inglés (el que espera Salesforce),
+   segundo = etiqueta en español para la pantalla. En ClickHouse se guarda el
+   inglés, así el dato ya sale listo y no hay que convertir nada después. */
+const INDUSTRIAS = [
+  ["Agriculture",         "Agricultura"],
+  ["Food & Beverage",     "Alimentos y bebidas"],
+  ["Banking",             "Banca"],
+  ["Biotechnology",       "Biotecnología"],
+  ["Cybersecurity",       "Ciberseguridad"],
+  ["Retail",              "Comercio minorista"],
+  ["Communications",      "Comunicaciones"],
+  ["Construction",        "Construcción"],
+  ["Consulting",          "Consultoría"],
+  ["Education",           "Educación"],
+  ["Electronics",         "Electrónica"],
+  ["Energy",              "Energía"],
+  ["Entertainment",       "Entretenimiento"],
+  ["Shipping",            "Envíos"],
+  ["Finance",             "Finanzas"],
+  ["Government",          "Gobierno"],
+  ["Hospitality",         "Hotelería y turismo"],
+  ["Engineering",         "Ingeniería"],
+  ["Manufacturing",       "Manufactura"],
+  ["Machinery",           "Maquinaria"],
+  ["Enviromental",        "Medioambiente"],
+  ["Media",               "Medios"],
+  ["Other",               "Otra"],
+  ["Chemicals",           "Química"],
+  ["Recreation",          "Recreación"],
+  ["Healthcare",          "Salud"],
+  ["Insurance",           "Seguros"],
+  ["Utilities",           "Servicios públicos"],
+  ["Non for Profit",      "Sin fines de lucro"],
+  ["Technology",          "Tecnología"],
+  ["Telecommunications",  "Telecomunicaciones"],
+  ["Transportation",      "Transporte"],
+  ["Apparel",             "Vestuario"]
+];
+
+/* Tramos de dotación. Se guardan tal cual: no se traducen. El orden de este
+   array es el orden real — como texto, "101-250" se ordena antes que "11-25". */
+const EMPLEADOS = ["0-10","11-25","26-50","51-100","101-250","251-500",
+                   "501-1000","1001-2500","2501-5000","5001-10000","10000+"];
 
 /* Logotipo oficial, sin modificaciones */
 const LOGO = `<svg id="Layer_1" xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="0 0 649.3 198.3">
@@ -335,7 +387,17 @@ function screenForm(){
     <p class="step">Paso 2 — Tus datos</p>
     <label class="field"><span>Nombre</span><input type="text" id="n" autocomplete="given-name" placeholder="Camila"></label>
     <label class="field"><span>Apellido</span><input type="text" id="a" autocomplete="family-name" placeholder="Rojas"></label>
-    <label class="field"><span>Correo de tu cuenta de prueba</span><input type="email" id="e" autocomplete="email" inputmode="email" placeholder="camila@empresa.cl"></label>
+    <label class="field"><span>Correo electrónico corporativo</span><input type="email" id="e" autocomplete="email" inputmode="email" placeholder="camila@empresa.cl"></label>
+    <label class="field"><span>Teléfono</span><input type="tel" id="t" autocomplete="tel" inputmode="tel" placeholder="+56 9 1234 5678"></label>
+    <label class="field"><span>Empresa</span><input type="text" id="emp" autocomplete="organization" placeholder="ClickHouse"></label>
+    <label class="field"><span>Industria</span><select id="ind" required>
+      <option value="" disabled selected>Selecciona una opción</option>
+      ${INDUSTRIAS.map(([v,l]) => `<option value="${esc(v)}">${esc(l)}</option>`).join("")}
+    </select></label>
+    <label class="field"><span>Cantidad de empleados</span><select id="cnt" required>
+      <option value="" disabled selected>Selecciona una opción</option>
+      ${EMPLEADOS.map(v => `<option value="${esc(v)}">${esc(v)}</option>`).join("")}
+    </select></label>
     <p class="note">Tienes un solo intento. El cronómetro parte cuando das vuelta la primera carta.</p>
     <p class="err hide" id="err"></p>
     <button class="btn" id="go" style="margin-top:18px">Comenzar a jugar</button>
@@ -344,14 +406,24 @@ function screenForm(){
   const show = m => { err.textContent = m; err.classList.remove("hide"); };
   track("form_visto");
   document.getElementById("go").onclick = async (ev) => {
-    const n = document.getElementById("n").value.trim();
-    const a = document.getElementById("a").value.trim();
-    const e = document.getElementById("e").value.trim();
+    const n   = document.getElementById("n").value.trim();
+    const a   = document.getElementById("a").value.trim();
+    const e   = document.getElementById("e").value.trim();
+    const t   = document.getElementById("t").value.trim();
+    const emp = document.getElementById("emp").value.trim();
+    const ind = document.getElementById("ind").value;
+    const cnt = document.getElementById("cnt").value;
     err.classList.add("hide");
-    if(n.length < 2){ track("form_invalido", {campo:"nombre"}); return show("Escribe tu nombre."); }
-    if(a.length < 2){ track("form_invalido", {campo:"apellido"}); return show("Escribe tu apellido."); }
-    if(!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(e)){ track("form_invalido", {campo:"correo"}); return show("Revisa tu correo."); }
-    state.player = { n, a, e };
+    const malo = (campo, msg) => { track("form_invalido", {campo}); show(msg); };
+    if(n.length < 2)   return malo("nombre",    "Escribe tu nombre.");
+    if(a.length < 2)   return malo("apellido",  "Escribe tu apellido.");
+    if(!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(e)) return malo("correo", "Revisa tu correo.");
+    /* Solo contamos dígitos: así aceptamos +56 9 1234 5678, (56) 912345678, etc. */
+    if(t.replace(/\D/g, "").length < 8) return malo("telefono", "Revisa tu teléfono.");
+    if(emp.length < 2) return malo("empresa",   "Escribe el nombre de tu empresa.");
+    if(!ind)           return malo("industria", "Elige tu industria.");
+    if(!cnt)           return malo("empleados", "Elige la cantidad de empleados.");
+    state.player = { n, a, e, t, emp, ind, cnt };
     /* Envío deliberado, no capturado del teclado: liga la sesión a la persona
        registrada. Borra estas dos líneas si prefieres telemetría anónima. */
     try{ HDX && HDX.setGlobalAttributes({ userEmail:e, userName:n+" "+a }); }catch(e2){}
@@ -376,7 +448,9 @@ function screenForm(){
        la fila completa al terminar, así que se recupera solo. Únicamente se
        pierde el dato si además abandona la partida. */
     try{
-      await chq("registro", { evento:CONFIG.eventLabel, correo:e, nombre:n, apellido:a, session_id:sessionId });
+      await chq("registro", { evento:CONFIG.eventLabel, correo:e, nombre:n, apellido:a,
+                              telefono:t, empresa:emp, industria:ind, empleados:cnt,
+                              session_id:sessionId });
       track("registro_ok", {modo:"servidor"});
     }catch(err2){
       track("registro_error_red", {motivo:String(err2 && err2.message || err2)});
@@ -436,9 +510,13 @@ function screenGame(){
 
 async function finish(){
   const p = state.player;
-  /* Guardamos el correo: es la identidad del jugador contra ClickHouse, y sin
-     él quien vuelve a abrir la página no puede recuperar su posición. */
-  try{ localStorage.setItem(LS, JSON.stringify({n:p.n, a:p.a, e:p.e, ms:state.ms})); }catch(e){}
+  /* Guardamos la ficha completa, no solo el correo. El correo hace falta para
+     recuperar la posición al volver; el resto, porque "tiempo" reinserta la fila
+     entera: si reintentáramos con los campos vacíos, borraríamos teléfono,
+     empresa, industria y dotación de quien ya los había dado. */
+  try{ localStorage.setItem(LS, JSON.stringify({
+    n:p.n, a:p.a, e:p.e, t:p.t, emp:p.emp, ind:p.ind, cnt:p.cnt, ms:state.ms
+  })); }catch(e){}
   if(DEMO){
     const rows = demoSave(initial(p.n,p.a), state.ms);
     state.top = rows.slice(0, CONFIG.prizeCount);
@@ -460,6 +538,8 @@ async function sendScore(){
       /* Reinserta la fila completa: con ReplacingMergeTree la última versión
          reemplaza a la anterior, así que omitir nombre o apellido los borraría. */
       await chq("tiempo", { evento:CONFIG.eventLabel, correo:p.e, nombre:p.n, apellido:p.a,
+                            telefono:p.t || "", empresa:p.emp || "",
+                            industria:p.ind || "", empleados:p.cnt || "",
                             session_id:sessionId, elapsed_ms:state.ms,
                             flips:state.flips || 0, fallos:state.fallos || 0 });
       await refreshTop();
@@ -564,7 +644,8 @@ function render(){
   let prev = null;
   try{ prev = JSON.parse(localStorage.getItem(LS) || "null"); }catch(e){}
   if(prev && prev.ms){
-    state.player = { n:prev.n, a:prev.a, e:prev.e || "" };
+    state.player = { n:prev.n, a:prev.a, e:prev.e || "", t:prev.t || "",
+                     emp:prev.emp || "", ind:prev.ind || "", cnt:prev.cnt || "" };
     state.ms = prev.ms; state.replay = true; state.screen = "result";
     track("jugador_recurrente", { elapsed_ms:prev.ms });
     root.innerHTML = `${logo()}<p class="eyebrow">Cargando tabla</p>`;
