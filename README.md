@@ -38,8 +38,9 @@ python3 -m http.server 8000
 - `?reset=1` clears this browser's saved result. Without it, a browser that already
   finished a game goes straight to its result screen.
 - Serve over `http://localhost`, not `file://`, so requests carry a real origin.
-- Without `?demo=1`, ClickHouse calls from `localhost` only work if
-  `http://localhost:8000` is in the endpoints' CORS allowed domains.
+- Without `?demo=1`, ClickHouse calls from `localhost` only work if `localhost` is in
+  the endpoints' CORS allowed domains. Browse to `localhost`, not `127.0.0.1`: the
+  latter is a different host and is rejected unless you add it.
 
 ## Getting it working again
 
@@ -97,7 +98,11 @@ The game works without ClickStack but not without these. If the form hangs on
 3. **Endpoints exist.** There are five. Each is a saved query from `sql/schema.sql`,
    shared via **Share → API Endpoint**. When creating one, choose the API key allowed to
    call it, a database role (endpoints 1 and 2 are `INSERT`s, so **Read only** won't
-   work), and the CORS allowed domains (see step 4).
+   work), and the **CORS allowed domains**. Don't skip the CORS field. It's needed for
+   every endpoint, and it is the most common reason a freshly recreated endpoint fails
+   only in the browser (see the preflight check below). Enter **hostnames**, not full
+   origins: `localhost` for local testing and the Pages host from
+   [Deploy](#4-deploy) (e.g. `<user>.github.io`). One entry per host, comma-separated.
 4. **API key.** The code authenticates with HTTP Basic auth, `key:secret`, in
    `CONFIG.ch.key` / `CONFIG.ch.secret`. Create a new OpenAPI key in the Cloud console
    if the old one was rotated. Per the
@@ -126,9 +131,23 @@ An empty body or `OK` is fine for an empty table or an `INSERT`. `403 Not enough
 means missing `GRANT`s. A `400` usually means a missing `param_*` (the app always sends
 every parameter, even if empty).
 
-> If the old `queries.clickhouse.cloud/run/<id>` host no longer resolves, note that the
-> current docs show the format `https://console-api.clickhouse.cloud/.api/query-endpoints/<id>/run`.
-> The URL is built in `chq()` in `index.html`.
+That test works even when the browser can't call the endpoint, because curl doesn't do
+CORS. Browsers send a **preflight `OPTIONS`** request first (the `Authorization` header
+forces one). Check it separately. It needs no credentials:
+
+```sh
+curl -sSi -X OPTIONS \
+  -H 'Origin: http://localhost:8000' \
+  -H 'Access-Control-Request-Method: GET' \
+  -H 'Access-Control-Request-Headers: authorization' \
+  "https://queries.clickhouse.cloud/run/<endpoint-id>"
+```
+
+A healthy endpoint answers `204` with `access-control-allow-origin: http://localhost:8000`.
+A `405 {"error":"Method not allowed"}` means the endpoint's CORS allowed domains are empty
+or don't include this host. Run this against **all five** endpoints, and read
+[Query Endpoint CORS behavior](#query-endpoint-cors-behavior-verified-2026-10-22) for what
+to enter in the field and why.
 
 ### 3. Configure for the (new) event
 
@@ -156,9 +175,9 @@ The site is served from GitHub Pages. The original repo is
    **Settings → Pages → Deploy from branch → `main` / root** on the fork, and use the
    fork's URL from here on.
 2. `git push origin main`, then wait for the Pages build to finish.
-3. **Add the Pages origin to each endpoint's CORS allowed domains**
-   (`https://<user>.github.io`, with no path). Without it the browser blocks every
-   ClickHouse call even when the credentials are fine.
+3. **Add the Pages host to each endpoint's CORS allowed domains**
+   (`<user>.github.io`, hostname only: no scheme, no path). Without it the browser
+   blocks every ClickHouse call even when the credentials are fine.
 4. **If the URL changed**, reprint the poster: open `qr.html`, paste the new URL, and
    use *Imprimir / PDF*. The optional *origen* field appends `?src=...`, so you can
    print one poster per location and see which one drives traffic in ClickStack.
@@ -258,6 +277,73 @@ Everything in `CONFIG` is readable by anyone who opens the page's source.
   purpose. Delete that `setGlobalAttributes` call in `screenForm()` if you want
   anonymous telemetry.
 
+## Query Endpoint CORS behavior (verified 2026-10-22)
+
+Findings from debugging a `405 Method not allowed` on a recreated endpoint. They come
+from unauthenticated `curl` probes, with no credentials and no data written, against the
+re-created `tiempo` endpoint and the original endpoints from this repo.
+
+**Symptom.** The game fails in the browser, DevTools shows `405 {"error":"Method not
+allowed"}`, but the same request works from `curl`.
+
+**Cause.** The app sends an `Authorization` header cross-origin, so the browser first
+sends a preflight `OPTIONS` request. The endpoint rejected that preflight with `405`, so
+the browser never sent the real request. The route itself accepts `GET` and `POST`:
+without credentials both returned `401 Unauthorized`, which is what you'd expect once the
+method is accepted.
+
+**What the "CORS allowed domains" field does:**
+
+| Endpoint setting | Preflight result |
+|---|---|
+| Empty list (also what you get by removing the entries) | `405` for **every** request carrying an `Origin` header, identical to the response for a nonexistent endpoint ID. Without an `Origin` header it answers `204` with no `allow-origin`. |
+| `ch-caioishizaka.github.io, localhost` | `204` + `access-control-allow-origin: <origin>` for `https://ch-caioishizaka.github.io`, `http://ch-caioishizaka.github.io`, `http://localhost:8000`, `http://localhost` and `https://localhost`. `405` for `http://127.0.0.1:8000` and `https://example.com`. |
+| Original event endpoints (not verified what was entered) | Reflected **any** origin, including `https://example.com`. This is the behavior of an allow-all entry, probably `*`. |
+
+What follows from that:
+
+- **Removing the validation does not disable CORS.** An empty list rejects every origin.
+  Either list the hosts or use an allow-all entry. Not verified: whether the field accepts
+  `*`.
+- **Enter bare hostnames**, comma-separated (`localhost, <user>.github.io`). They matched
+  regardless of scheme and port.
+- **`localhost` and `127.0.0.1` are different hosts.** Browse to `localhost` when testing
+  locally, or add `127.0.0.1` to the list.
+- **A `405` on the preflight doesn't mean the endpoint ID is wrong.** A nonexistent ID
+  answers identically. Check that the endpoint exists and that its list isn't empty.
+- On success the original endpoints also sent
+  `access-control-allow-headers: authorization`,
+  `access-control-allow-methods: GET,HEAD,PUT,PATCH,POST,DELETE` and
+  `access-control-max-age: 7200`. Browsers may therefore keep honoring an earlier
+  successful preflight for up to two hours after you change the list. Test in a private
+  window if results look stale.
+- CORS only restricts browsers. It does not protect the keys, which are public in the
+  HTML anyway.
+
+**Endpoint host.** The code calls `https://queries.clickhouse.cloud/run/<id>`. As of this
+date it still works and answers CORS preflights, so leave it. The current docs show
+`https://console-api.clickhouse.cloud/.api/query-endpoints/<id>/run` instead. For an
+endpoint with an empty CORS list, that host answered `OPTIONS` with `200` and
+`allow: POST,GET,HEAD`, but no `access-control-allow-*` headers. It wasn't tested again
+after CORS was configured, so don't switch `chq()` to it without testing from a browser.
+
+**Not verified.** Authenticated requests: no credentials were used, so a successful
+preflight doesn't prove the `INSERT` endpoints accept `GET` with credentials. If the
+preflight passes and the request still fails, read the response body of the actual
+request.
+
+**Reproduce:**
+
+```sh
+for o in https://<user>.github.io http://localhost:8000 http://127.0.0.1:8000 https://example.com; do
+  echo "== $o"
+  curl -sSi -X OPTIONS -H "Origin: $o" \
+    -H 'Access-Control-Request-Method: GET' \
+    -H 'Access-Control-Request-Headers: authorization' \
+    "https://queries.clickhouse.cloud/run/<endpoint-id>" | grep -iE '^(HTTP/|access-control-allow-origin)'
+done
+```
+
 ## Troubleshooting
 
 | Symptom | Likely cause |
@@ -265,6 +351,7 @@ Everything in `CONFIG` is readable by anyone who opens the page's source.
 | Game works, but nothing appears in ClickStack | Bad or revoked `hdxKey`, wrong `hdxUrl`, or the SDK script failed to load. Check DevTools → Network for the `@hyperdx/browser` script and the collector calls. |
 | `window.HyperDX` is undefined | The SDK is loaded from `unpkg.com` (`@hyperdx/browser@0.21.0`). A blocked or slow CDN, such as venue wifi, silently disables telemetry. The game itself keeps working. |
 | "Este correo ya participó" for a new tester | That email already has `elapsed_ms > 0` for this `eventLabel`. Change `eventLabel` or delete the row. |
+| `405 Method not allowed` on an `OPTIONS` request in DevTools, with "CORS error" on the real request | The endpoint's CORS allowed domains are empty or don't include the page's host. See [Query Endpoint CORS behavior](#query-endpoint-cors-behavior-verified-2026-10-22). |
 | "Tu tiempo no llegó al servidor" | The `tiempo` endpoint failed: service idle, CORS missing, bad credentials or missing grants. The player can tap *Enviar mi tiempo* to retry. |
 | 403 "Not enough privileges" | `GRANT`s are per column. Re-run them from `schema.sql` after adding columns. |
 | Result screen says "Modo demo: la tabla es local..." | `CONFIG.ch.key` is empty, or the URL has `?demo`. Nothing is saved to ClickHouse. |
