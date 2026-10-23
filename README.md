@@ -157,8 +157,11 @@ Edit the `CONFIG` block in `index.html`:
   the leaderboard, the "one attempt per email" check and the reports. Keep the old
   value and previous participants are blocked and the old leaderboard comes back. Use a
   new value for a fresh event.
-- **`prizeCount`** is how many positions are shown and win a prize. The `top` endpoint
-  takes it as `UInt8`.
+- **`prizeCount`** is how many positions win a prize. Every on-screen text uses it, and
+  those rows are highlighted in the leaderboard.
+- **`tableSize`** (set right after `CONFIG`, `prizeCount * 4`) is how many rows the
+  leaderboard shows and what is sent to the `top` endpoint as `limite`. The endpoint
+  takes it as `UInt8`, so keep it at 255 or less.
 - **Prize pick-up time** ("14:00 del día 09") is hard-coded in the result screen and the
   footer of `index.html`, and in the footer of `qr.html`. Search for `14:00`.
 - `trialUrl` is defined in `CONFIG` but **not used** anywhere right now.
