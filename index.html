@@ -107,9 +107,11 @@ table{width:100%;border-collapse:collapse}
 td{border-bottom:1px solid var(--ink-30);padding:12px 0;font-size:14.5px;font-weight:500;vertical-align:middle}
 td.pos{font-family:var(--display);font-weight:800;font-size:14px;width:34px;font-variant-numeric:tabular-nums}
 td.time{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap;font-weight:600}
+tr.prize td{background:var(--white);font-weight:700}
+tr.prize-last td{border-bottom:2px solid var(--black)}
 tr.me td{background:var(--black);color:var(--white);font-weight:700}
-tr.me td.pos{padding-left:8px}
-tr.me td.time{padding-right:8px}
+tr.prize td.pos,tr.me td.pos{padding-left:8px}
+tr.prize td.time,tr.me td.time{padding-right:8px}
 .empty{font-size:14px;color:var(--ink-60);padding:16px 0;margin:0}
 footer{margin-top:28px;border-top:2px solid var(--black);padding-top:14px;font-size:11.5px;line-height:1.6;color:var(--ink-60);font-weight:500}
 footer b{font-weight:700;color:var(--black);cursor:pointer}
@@ -187,6 +189,8 @@ const CONFIG = {
   hdxUrl: "https://zafigkfd8a.otel.us-east-2.aws.clickhouse.cloud:4318",
   hdxService: "memoria-clickhouse-web"
 };
+/* La tabla muestra más filas que premios; los textos siguen usando prizeCount. */
+CONFIG.tableSize = CONFIG.prizeCount * 4;
 
 const WORDS = [
   "Analytics en tiempo real",
@@ -498,7 +502,7 @@ async function finish(){
   })); }catch(e){}
   if(DEMO){
     const rows = demoSave(initial(p.n,p.a), state.ms);
-    state.top = rows.slice(0, CONFIG.prizeCount);
+    state.top = rows.slice(0, CONFIG.tableSize);
     state.total = rows.length;
     state.pos = rows.findIndex(r => r.ms === state.ms) + 1;
     state.saved = true;
@@ -533,9 +537,9 @@ async function sendScore(){
 /* Refresca tabla y posición. Van por separado a propósito: si falla una,
    la otra igual se actualiza. */
 async function refreshTop(){
-  if(DEMO){ const r = demoRows(); state.top = r.slice(0, CONFIG.prizeCount); state.total = r.length; return; }
+  if(DEMO){ const r = demoRows(); state.top = r.slice(0, CONFIG.tableSize); state.total = r.length; return; }
   try{
-    const rows = await chq("top", { evento:CONFIG.eventLabel, limite:CONFIG.prizeCount });
+    const rows = await chq("top", { evento:CONFIG.eventLabel, limite:CONFIG.tableSize });
     state.top = rows.map(r => ({ name:r.name, ms:Number(r.ms) }));
     track("tabla_actualizada", { filas:state.top.length });
   }catch(e){ track("tabla_error_red", {motivo:String(e && e.message || e)}); }
@@ -582,10 +586,10 @@ function screenResult(replay){
 }
 
 function rankTable(mine){
-  const top = (state.top || []).slice(0, CONFIG.prizeCount);
+  const top = (state.top || []).slice(0, CONFIG.tableSize);
   let marked = false;
   return `
-    <div class="rank-h"><h2>Tabla de posiciones</h2><span>Top ${CONFIG.prizeCount}</span></div>
+    <div class="rank-h"><h2>Tabla de posiciones</h2><span>Top ${CONFIG.tableSize}</span></div>
     ${top.length ? `<table>${top.map((r,i) => {
       /* Con servidor usamos la posición que devuelve ClickHouse: es exacta y no
          se confunde entre dos "Camila R.". El calce por nombre queda de respaldo
@@ -594,7 +598,13 @@ function rankTable(mine){
         ? (i + 1) === state.pos
         : (r.name === mine && Math.abs(r.ms - state.ms) < 2));
       if(me) marked = true;
-      return `<tr class="${me ? "me" : ""}">
+      /* Las filas con premio se destacan; una línea gruesa las separa del resto. */
+      const cls = [
+        i < CONFIG.prizeCount ? "prize" : "",
+        i === CONFIG.prizeCount - 1 && top.length > CONFIG.prizeCount ? "prize-last" : "",
+        me ? "me" : ""
+      ].filter(Boolean).join(" ");
+      return `<tr class="${cls}">
         <td class="pos">${i+1}</td>
         <td>${esc(r.name)}${me ? " · tú" : ""}</td>
         <td class="time">${secs(r.ms)} s</td>
